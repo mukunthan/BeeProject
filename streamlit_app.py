@@ -1,53 +1,78 @@
 import streamlit as st
-from openai import OpenAI
+import os
+#os.system("pip install tensorflow")
+import tensorflow as tf
+import numpy as np
+#os.system("pip install librosa")
+import librosa
+os.system("pip install matplotlib")
+import matplotlib.pyplot as plt
 
-# Show title and description.
-st.title("📄 Document question answering")
+# Load the pre-trained model
+model = tf.saved_model.load('YAMNet/YamNet')  # Update with your actual model path
+
+classes = [
+    "queen not present", 
+    "queen present and newly accepted",
+    "queen present and rejected",
+    "queen present or original queen"
+]
+
+# Define a function to predict the Queen bee status
+def predict_queen_status(audio_file):
+    waveform, sr = librosa.load(audio_file, sr=16000)
+    if waveform.shape[0] % 16000 != 0:
+        waveform = np.concatenate([waveform, np.zeros(16000)])
+    inp = tf.constant(np.array([waveform]), dtype='float32')
+    class_scores = model(inp)[0].numpy()
+    prediction = classes[class_scores.argmax()]
+    return prediction, waveform
+
+# Define a function to plot the waveform and Mel spectrogram
+def plot_waveform_and_spectrogram(waveform,sr=16000):
+    #waveform, sr = librosa.load(audio, sr=16000)
+    fig, axes = plt.subplots(2, figsize=(12, 8))
+    # Plot the waveform
+    timescale = np.arange(waveform.shape[0])
+    axes[0].plot(timescale, waveform)
+    axes[0].set_title('Waveform')
+    axes[0].set_xlim([0, len(waveform)])
+    
+    # Compute the Mel spectrogram
+    mel_spectrogram = librosa.feature.melspectrogram(y=waveform, sr=sr, n_fft=1024, hop_length=512, n_mels=128)
+    mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+    
+    # Plot the Mel spectrogram
+    img = librosa.display.specshow(mel_spectrogram_db, sr=sr, hop_length=512, x_axis='time', y_axis='mel', ax=axes[1])
+    axes[1].set_title('Mel-Frequency Spectrogram')
+
+    # Add a colorbar
+    fig.colorbar(img, ax=axes[1], format="%+2.0f dB")
+
+    # Show the plots
+    plt.tight_layout()
+    return fig
+
+# Streamlit App Interface
+st.title("🐝 Queen Bee Status Prediction")
 st.write(
-    "Upload a document below and ask a question about it – GPT will answer! "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
+    "Upload an audio file to predict the Queen bee's status in the hive using a trained YAMNet model. "
+    "This app analyzes the audio data and classifies the status of the Queen bee."
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
+# Upload audio file
+uploaded_audio = st.file_uploader("Upload an audio file (.wav or .mp3)", type=("wav", "mp3"))
+
+if uploaded_audio:
+    # Predict the Queen bee status
+    prediction, waveform = predict_queen_status(uploaded_audio)
+    
+    # Display the prediction
+    st.write(f"Predicted Queen Bee Status: **{prediction}**")
+    
+    # Plot the waveform and Mel spectrogram
+    st.write("### Audio Analysis")
+    #plot_waveform_and_spectrogram(waveform)
+    st.pyplot(plot_waveform_and_spectrogram(waveform, 16000))
 else:
-
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
-
-    # Let the user upload a file via `st.file_uploader`.
-    uploaded_file = st.file_uploader(
-        "Upload a document (.txt or .md)", type=("txt", "md")
-    )
-
-    # Ask the user for a question via `st.text_area`.
-    question = st.text_area(
-        "Now ask a question about the document!",
-        placeholder="Can you give me a short summary?",
-        disabled=not uploaded_file,
-    )
-
-    if uploaded_file and question:
-
-        # Process the uploaded file and question.
-        document = uploaded_file.read().decode()
-        messages = [
-            {
-                "role": "user",
-                "content": f"Here's a document: {document} \n\n---\n\n {question}",
-            }
-        ]
-
-        # Generate an answer using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            stream=True,
-        )
-
-        # Stream the response to the app using `st.write_stream`.
-        st.write_stream(stream)
+    st.info("Please upload an audio file to continue.", icon="🔍")
