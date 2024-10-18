@@ -1,9 +1,9 @@
 import streamlit as st
 import os
-#os.system("pip install tensorflow")
+os.system("pip install tensorflow")
 import tensorflow as tf
 import numpy as np
-#os.system("pip install librosa")
+os.system("pip install librosa")
 import librosa
 os.system("pip install matplotlib")
 import matplotlib.pyplot as plt
